@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - SubTracker</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+</head>
+
+<body>
+
+    <!-- Login Screen -->
+    <div id="loginScreen" class="login-screen">
+        <div class="login-box">
+            <i class="fa-solid fa-chart-line"></i>
+            <h2>Admin Dashboard</h2>
+            <p>Subscription Tracker Admin Panel</p>
+            <form id="loginForm">
+                <input type="text" id="username" placeholder="Username" required>
+                <input type="password" id="password" placeholder="Password" required>
+                <button type="submit">Login</button>
+            </form>
+            <!-- <div class="demo-creds">Default: admin / admin123</div> -->
+        </div>
+    </div>
+
+    <!-- Admin Dashboard -->
+    <div id="adminDashboard" style="display: none;">
+
+        <!-- Mobile Menu Button -->
+        <button class="mobile-menu-btn" id="mobileMenuBtn">
+            <i class="fa-solid fa-bars"></i>
+        </button>
+
+        <div class="admin-layout">
+            <aside class="sidebar">
+                <div class="logo">
+                    <i class="fa-solid fa-chart-simple"></i>
+                    <span>Admin Panel</span>
+                </div>
+                <nav>
+                    <div class="nav-item active" data-page="dashboard">
+                        <i class="fa-solid fa-chart-line"></i>
+                        <span>Dashboard</span>
+                    </div>
+                    <div class="nav-item" data-page="subscriptions">
+                        <i class="fa-solid fa-repeat"></i>
+                        <span>Subscriptions</span>
+                    </div>
+                    <div class="nav-item" data-page="analytics">
+                        <i class="fa-solid fa-chart-pie"></i>
+                        <span>Analytics</span>
+                    </div>
+                </nav>
+                <div class="sidebar-footer">
+                    <div class="admin-info">
+                        <i class="fa-solid fa-user-shield"></i>
+                        <span id="adminName">Admin</span>
+                    </div>
+                    <button id="logoutBtn" class="logout-btn">
+                        <i class="fa-solid fa-sign-out-alt"></i> Logout
+                    </button>
+                </div>
+            </aside>
+
+            <main class="main-content">
+                <!-- Dashboard Page -->
+                <div id="dashboardPage" class="page active">
+                    <div class="page-header">
+                        <h1>Dashboard Overview <span class="live-badge"><i class="fa-solid fa-circle"></i> LIVE</span>
+                        </h1>
+                        <p>Real-time subscription analytics</p>
+                    </div>
+
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-icon blue"><i class="fa-solid fa-repeat"></i></div>
+                            <div class="stat-details">
+                                <h3>Total Subscriptions</h3>
+                                <p id="totalSubs">0</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon green"><i class="fa-solid fa-dollar-sign"></i></div>
+                            <div class="stat-details">
+                                <h3>Monthly Revenue</h3>
+                                <p id="monthlyRevenue">$0</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon purple"><i class="fa-solid fa-chart-line"></i></div>
+                            <div class="stat-details">
+                                <h3>Yearly Revenue</h3>
+                                <p id="yearlyRevenue">$0</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon orange"><i class="fa-solid fa-calendar-week"></i></div>
+                            <div class="stat-details">
+                                <h3>Due This Week</h3>
+                                <p id="dueThisWeek">0</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="charts-grid">
+                        <div class="chart-card">
+                            <h3>Category Distribution</h3>
+                            <canvas id="categoryChart"></canvas>
+                        </div>
+                        <div class="chart-card">
+                            <h3>Billing Cycle Breakdown</h3>
+                            <canvas id="cycleChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Subscriptions Page -->
+                <div id="subscriptionsPage" class="page">
+                    <div class="page-header">
+                        <h1>All Subscriptions</h1>
+                        <p>Manage all user subscriptions</p>
+                    </div>
+                    <button id="exportCSVBtn" class="export-btn"><i class="fa-solid fa-download"></i> Export to
+                        CSV</button>
+                    <div class="search-box">
+                        <input type="text" id="searchSubs" placeholder="Search by service or category...">
+                    </div>
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Service</th>
+                                    <th>Category</th>
+                                    <th>Price</th>
+                                    <th>Cycle</th>
+                                    <th>Next Billing</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="subscriptionsTableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Analytics Page -->
+                <div id="analyticsPage" class="page">
+                    <div class="page-header">
+                        <h1>Analytics</h1>
+                        <p>Detailed insights</p>
+                    </div>
+                    <div class="charts-grid">
+                        <div class="chart-card">
+                            <h3>Revenue Trend</h3>
+                            <canvas id="revenueTrendChart"></canvas>
+                        </div>
+                        <div class="chart-card">
+                            <h3>Status Distribution</h3>
+                            <canvas id="statusChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script src="js/script.js"></script>
+</body>
+
+</html>
