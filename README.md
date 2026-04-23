@@ -123,3 +123,54 @@ The admin dashboard is fully responsive and works on:
 - Horizontal scrollable tables
 - Optimized font sizes
 
+## Installation
+```bash
+git clone https://github.com/David-Kimath1/subtracker-admin.git
+cd subtracker-admin
+Open index.html in your browser
+```
+
+# Connecting to SubTracker
+The admin dashboard automatically syncs with the same Firebase database as the SubTracker app. No additional configuration needed!
+
+Both apps use the same Firebase configuration.
+
+## Author
+# David Kimathi
+
+GitHub: https://github.com/David-Kimath1
+Project: https://github.com/David-Kimath1/subtracker-admin
+
+# Contributing
+Contributions are welcome! Feel free to:
+
+Fork the repository
+
+Create a feature branch (git checkout -b feature/amazing-feature)
+
+Commit your changes (git commit -m 'Add amazing feature')
+
+Push to the branch (git push origin feature/amazing-feature)
+
+Open a Pull Request
+
+## License
+This project is licensed under the MIT License.
+
+## Acknowledgments
+Icons by FontAwesome
+
+Font by Google Fonts
+
+Firebase for real-time database
+
+Chart.js for beautiful charts
+
+ExchangeRate-API for currency conversion
+
+## Support
+If you find this useful, please give it a ⭐ on GitHub!
+
+Found a bug? Open an issue
+
+# Made with Lots of Love ❤️ by David Kimathi
