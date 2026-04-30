@@ -31,7 +31,7 @@ Administrative dashboard for managing all user subscriptions with real-time anal
 
 ## Try Live
 
-**[Try Admin Dashboard](https://subtracker-admin.vercel.app)**
+**[Try Admin Dashboard](https://subtracker-admln.vercel.app/)**
 
 
 ## How to Use
