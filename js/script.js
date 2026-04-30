@@ -60,6 +60,54 @@ const categoryColors = {
 
 const chartColors = ['#e94560', '#48dbfb', '#2ecc71', '#FF9A86', '#a29bfe', '#FFF0BE', '#f39c12', '#B6F500'];
 
+// ==================== HELPER FUNCTIONS ====================
+
+function showNotification(message, type = 'info') {
+    const notification = document.createElement('div');
+    notification.className = `notification notification-${type}`;
+    notification.innerHTML = `
+        <i class="fa-solid ${type === 'error' ? 'fa-exclamation-circle' : type === 'warning' ? 'fa-triangle-exclamation' : 'fa-info-circle'}"></i>
+        <span>${message}</span>
+    `;
+    document.body.appendChild(notification);
+    
+    setTimeout(() => {
+        notification.style.opacity = '0';
+        setTimeout(() => notification.remove(), 300);
+    }, 5000);
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function escapeCSV(str) {
+    if (str === null || str === undefined) return '';
+    const string = String(str);
+    if (string.includes(',') || string.includes('"') || string.includes('\n')) {
+        return '"' + string.replace(/"/g, '""') + '"';
+    }
+    return string;
+}
+
+// ==================== CREATE DEFAULT ADMIN ====================
+
+async function createDefaultAdmin() {
+    try {
+        await auth.createUserWithEmailAndPassword('admin@subtracker.com', 'admin123');
+        console.log("Default admin created");
+    } catch (error) {
+        if (error.code === 'auth/email-already-in-use') {
+            console.log("Admin already exists");
+        } else {
+            console.error("Error creating admin:", error);
+        }
+    }
+}
+
 // ==================== AUTHENTICATION ====================
 
 async function signInAdmin(email, password) {
@@ -67,14 +115,20 @@ async function signInAdmin(email, password) {
     const loginBtn = document.querySelector('#loginForm button');
     const originalText = loginBtn.innerHTML;
     
-    const originalWidth = loginBtn.offsetWidth;
-    loginBtn.style.minWidth = originalWidth + 'px';
+    loginBtn.style.minWidth = loginBtn.offsetWidth + 'px';
     loginBtn.innerHTML = '<i class="fa-solid fa-spinner fa-pulse"></i> Signing in...';
     loginBtn.disabled = true;
     errorDiv.style.display = 'none';
     
+    const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Login timeout')), 15000)
+    );
+    
     try {
-        const userCredential = await auth.signInWithEmailAndPassword(email, password);
+        const userCredential = await Promise.race([
+            auth.signInWithEmailAndPassword(email, password),
+            timeoutPromise
+        ]);
         
         if (userCredential.user.email !== ADMIN_EMAIL) {
             await auth.signOut();
@@ -92,12 +146,31 @@ async function signInAdmin(email, password) {
         
     } catch (error) {
         console.error("Admin sign in error:", error);
+        
+        let userMessage = '';
+        if (error.message === 'Login timeout') {
+            userMessage = 'Login timeout. Please check your internet connection';
+        } else if (error.code === 'auth/user-not-found') {
+            userMessage = 'No admin account found. Try: admin@subtracker.com / admin123';
+        } else if (error.code === 'auth/wrong-password') {
+            userMessage = 'Incorrect password. Try: admin123';
+        } else if (error.code === 'auth/invalid-email') {
+            userMessage = 'Please enter a valid email address';
+        } else if (error.code === 'auth/too-many-requests') {
+            userMessage = 'Too many failed attempts. Please try again later';
+        } else {
+            userMessage = error.message || 'Login failed. Try: admin@subtracker.com / admin123';
+        }
+        
         errorDiv.style.display = 'block';
-        errorDiv.textContent = error.message || 'Invalid admin credentials';
+        errorDiv.textContent = userMessage;
+        
+        if (error.message.includes('timeout') || error.message.includes('network')) {
+            errorDiv.innerHTML = `${userMessage}<br><button onclick="location.reload()" style="margin-top:10px; padding:5px 10px; background:#3b82f6; border:none; border-radius:5px; color:white; cursor:pointer;">Retry</button>`;
+        }
         
         loginBtn.innerHTML = originalText;
         loginBtn.disabled = false;
-        loginBtn.style.minWidth = '';
     }
 }
 
@@ -117,6 +190,8 @@ async function signOutAdmin() {
         document.getElementById('loginScreen').style.display = 'flex';
         document.getElementById('loginForm').reset();
         
+        showNotification('Logged out successfully', 'success');
+        
     } catch (error) {
         console.error("Sign out error:", error);
     }
@@ -128,7 +203,14 @@ async function detectAdminLocation() {
     console.log("Detecting admin location...");
     
     try {
-        const ipResponse = await fetch('https://ipapi.co/json/');
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        
+        const ipResponse = await fetch('https://ipapi.co/json/', {
+            signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        
         const ipData = await ipResponse.json();
         const countryCode = ipData.country_code;
         
@@ -148,24 +230,50 @@ async function detectAdminLocation() {
         console.error("Location detection failed, using USD:", error);
         adminCurrency = 'USD';
         adminSymbol = '$';
+        if (document.getElementById('currencyBadge')) {
+            document.getElementById('currencyBadge').textContent = '$ USD';
+        }
         await getExchangeRates();
     }
 }
 
 async function getExchangeRates() {
+    const cached = localStorage.getItem('exchangeRates');
+    const cachedTime = localStorage.getItem('exchangeRatesTime');
+    
+    if (cached && cachedTime && (Date.now() - parseInt(cachedTime) < 3600000)) {
+        exchangeRates = JSON.parse(cached);
+        console.log("Using cached exchange rates");
+        return;
+    }
+    
     try {
-        const response = await fetch('https://api.exchangerate-api.com/v4/latest/USD');
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        
+        const response = await fetch('https://api.exchangerate-api.com/v4/latest/USD', {
+            signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        
         const data = await response.json();
         exchangeRates = data.rates;
+        
+        localStorage.setItem('exchangeRates', JSON.stringify(exchangeRates));
+        localStorage.setItem('exchangeRatesTime', Date.now().toString());
+        
         console.log("Exchange rates loaded");
+        
     } catch (error) {
-        console.error("Failed to get exchange rates:", error);
+        console.error("Failed to get exchange rates, using fallback:", error);
         exchangeRates = { 
             USD: 1, KES: 130, EUR: 0.92, GBP: 0.79, 
             NGN: 1500, ZAR: 19, INR: 83, CAD: 1.35,
             AUD: 1.5, JPY: 150, CNY: 7.2, CHF: 0.85,
             SEK: 10.5, NZD: 1.65, SGD: 1.35, MXN: 17
         };
+        
+        showNotification('Using default currency rates (offline mode)', 'warning');
     }
 }
 
@@ -183,6 +291,8 @@ function convertToAdminCurrency(price, fromCurrency) {
 // ==================== REAL-TIME LISTENER ====================
 
 function setupRealtimeListener() {
+    let initialLoad = true;
+    
     db.collection('subscriptions').onSnapshot((snapshot) => {
         subscriptions = [];
         const uniqueUsers = new Set();
@@ -208,7 +318,39 @@ function setupRealtimeListener() {
             if (data.userId) uniqueUsers.add(data.userId);
         });
         
-        console.log(`Admin loaded ${subscriptions.length} subscriptions from ${uniqueUsers.size} unique users`);
+        console.log(`Loaded ${subscriptions.length} subscriptions from ${uniqueUsers.size} unique users`);
+        
+        const liveBadge = document.querySelector('.live-badge');
+        if (liveBadge) {
+            liveBadge.style.opacity = '0.5';
+            setTimeout(() => {
+                liveBadge.style.opacity = '1';
+            }, 200);
+            
+            const timeElement = liveBadge.querySelector('.update-time');
+            if (timeElement) {
+                timeElement.textContent = `Updated: ${new Date().toLocaleTimeString()}`;
+            }
+        }
+        
+        if (initialLoad && subscriptions.length === 0) {
+            const statsGrid = document.querySelector('.stats-grid');
+            if (statsGrid && !document.querySelector('.empty-data-message')) {
+                const emptyMsg = document.createElement('div');
+                emptyMsg.className = 'empty-data-message';
+                emptyMsg.innerHTML = `
+                    <i class="fa-solid fa-database"></i>
+                    <p>No subscriptions found in database</p>
+                    <small>Add some subscriptions through your app to see data here</small>
+                `;
+                statsGrid.parentNode.insertBefore(emptyMsg, statsGrid.nextSibling);
+            }
+            initialLoad = false;
+        } else if (initialLoad && subscriptions.length > 0) {
+            const emptyMsg = document.querySelector('.empty-data-message');
+            if (emptyMsg) emptyMsg.remove();
+            initialLoad = false;
+        }
         
         updateStats();
         renderSubscriptionsTable();
@@ -219,6 +361,7 @@ function setupRealtimeListener() {
         
     }, (error) => {
         console.error('Realtime error:', error);
+        showNotification('Error loading subscriptions: ' + error.message, 'error');
     });
 }
 
@@ -227,7 +370,6 @@ function setupRealtimeListener() {
 function updateStats() {
     const total = subscriptions.length;
     const active = subscriptions.filter(s => s.status === 'active');
-    const uniqueUsers = new Set(subscriptions.map(s => s.userId).filter(id => id && id !== 'unknown'));
     
     let monthlyRevenue = 0;
     let yearlyRevenue = 0;
@@ -276,6 +418,11 @@ function renderSubscriptionsTable() {
     const tbody = document.getElementById('subscriptionsTableBody');
     if (!tbody) return;
     
+    if (filtered.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 40px;">No subscriptions found</td></tr>';
+        return;
+    }
+    
     tbody.innerHTML = filtered.map(sub => {
         const originalDisplay = sub.currency !== adminCurrency ? 
             `<small style="color:#64748b"> (${sub.currency} ${sub.originalPrice})</small>` : '';
@@ -287,7 +434,7 @@ function renderSubscriptionsTable() {
                 </td>
                 <td><span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:${categoryColors[sub.category] || '#e94560'}; margin-right:8px;"></span>${escapeHtml(sub.category)}</td>
                 <td>${adminSymbol} ${sub.convertedPrice.toFixed(2)}${originalDisplay}</td>
-                <td>${sub.billingCycle}</td>
+                <td>${escapeHtml(sub.billingCycle)}</td>
                 <td>${sub.nextBillingDate ? new Date(sub.nextBillingDate).toLocaleDateString() : 'N/A'}</td>
                 <td><span class="status-badge status-${sub.status}">${sub.status}</span></td>
             </tr>
@@ -446,28 +593,36 @@ function updateStatusChart() {
 // ==================== EXPORT ====================
 
 function exportToCSV() {
+    if (subscriptions.length === 0) {
+        showNotification('No data to export', 'warning');
+        return;
+    }
+    
     const headers = ['Service', 'Category', 'Original Price', 'Original Currency', 'Converted Price', 'Converted Currency', 'Billing Cycle', 'Next Billing', 'Status', 'User ID', 'User Email'];
     const rows = subscriptions.map(sub => [
-        sub.name, 
-        sub.category, 
+        escapeCSV(sub.name), 
+        escapeCSV(sub.category), 
         sub.originalPrice, 
-        sub.currency, 
+        escapeCSV(sub.currency), 
         sub.convertedPrice.toFixed(2), 
-        adminCurrency,
-        sub.billingCycle, 
-        sub.nextBillingDate, 
-        sub.status,
-        sub.userId,
-        sub.userEmail
+        escapeCSV(adminCurrency),
+        escapeCSV(sub.billingCycle), 
+        escapeCSV(sub.nextBillingDate || 'N/A'), 
+        escapeCSV(sub.status),
+        escapeCSV(sub.userId),
+        escapeCSV(sub.userEmail)
     ]);
-    const csvContent = [headers, ...rows].map(row => row.join(',')).join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv' });
+    
+    const csvContent = [headers.map(escapeCSV), ...rows].map(row => row.join(',')).join('\n');
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = `subscriptions_${adminCurrency}_${new Date().toISOString().split('T')[0]}.csv`;
     a.click();
     URL.revokeObjectURL(url);
+    
+    showNotification(`Exported ${subscriptions.length} subscriptions to CSV`, 'success');
 }
 
 // ==================== NAVIGATION ====================
@@ -481,7 +636,12 @@ function initAdminDashboard() {
     const exportBtn = document.getElementById('exportCSVBtn');
     if (exportBtn) exportBtn.addEventListener('click', exportToCSV);
     
-    // Navigation
+    // Create overlay element
+    const overlay = document.createElement('div');
+    overlay.className = 'sidebar-overlay';
+    document.body.appendChild(overlay);
+    
+    // Navigation with auto-close
     document.querySelectorAll('.nav-item').forEach(item => {
         item.addEventListener('click', () => {
             const page = item.dataset.page;
@@ -490,6 +650,18 @@ function initAdminDashboard() {
             item.classList.add('active');
             const pageElement = document.getElementById(`${page}Page`);
             if (pageElement) pageElement.classList.add('active');
+            
+            // Close sidebar after navigation
+            const sidebar = document.querySelector('.sidebar');
+            if (sidebar) {
+                sidebar.classList.remove('open');
+                overlay.classList.remove('active');
+                const menuBtn = document.getElementById('mobileMenuBtn');
+                if (menuBtn) {
+                    const icon = menuBtn.querySelector('i');
+                    icon.className = 'fa-solid fa-bars';
+                }
+            }
             
             if (page === 'analytics') {
                 setTimeout(() => {
@@ -500,7 +672,7 @@ function initAdminDashboard() {
         });
     });
     
-    // Mobile menu toggle
+    // Burger menu toggle
     const mobileMenuBtn = document.getElementById('mobileMenuBtn');
     const sidebar = document.querySelector('.sidebar');
     
@@ -511,31 +683,53 @@ function initAdminDashboard() {
         newBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             sidebar.classList.toggle('open');
+            overlay.classList.toggle('active');
+            
+            const icon = newBtn.querySelector('i');
+            if (sidebar.classList.contains('open')) {
+                icon.className = 'fa-solid fa-times';
+            } else {
+                icon.className = 'fa-solid fa-bars';
+            }
         });
         
-        document.addEventListener('click', (e) => {
-            if (window.innerWidth <= 768) {
-                if (sidebar && !sidebar.contains(e.target) && e.target !== newBtn && !newBtn.contains(e.target)) {
-                    sidebar.classList.remove('open');
-                }
+        overlay.addEventListener('click', () => {
+            sidebar.classList.remove('open');
+            overlay.classList.remove('active');
+            const icon = newBtn.querySelector('i');
+            icon.className = 'fa-solid fa-bars';
+        });
+        
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && sidebar.classList.contains('open')) {
+                sidebar.classList.remove('open');
+                overlay.classList.remove('active');
+                const icon = newBtn.querySelector('i');
+                icon.className = 'fa-solid fa-bars';
             }
         });
     }
-}
-
-// ==================== HELPER ====================
-
-function escapeHtml(text) {
-    if (!text) return '';
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+    
+    // Chart resize handler
+    let resizeTimeout;
+    window.addEventListener('resize', () => {
+        clearTimeout(resizeTimeout);
+        resizeTimeout = setTimeout(() => {
+            Object.keys(charts).forEach(key => {
+                if (charts[key] && typeof charts[key].resize === 'function') {
+                    charts[key].resize();
+                }
+            });
+        }, 250);
+    });
 }
 
 // ==================== INITIALIZE ====================
 
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', async function() {
     console.log("Admin dashboard loaded");
+    
+    await createDefaultAdmin();
     
     const loginForm = document.getElementById('loginForm');
     if (loginForm) {
